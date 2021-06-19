@@ -1,0 +1,933 @@
+---
+title: "AID  - Trabajo Final"
+author: "Grupo H - Pedro Beltramino, Paula Bonet, Pablo Settimini"
+date: "10/2/2021"
+output: html_document
+ 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message=FALSE,
+                      warning=FALSE,
+                      fig.align = "center")
+```
+<h2>Introducción</h2>
+
+  En el Trabajo Final de la asignatura Análisis Inteligente de Datos utilizaremos nuevamente el conjunto de datos sobre canciones de Charly García y el trabajo ya realizado en las tareas anteriores. El objetivo es generar un producto en el cual se evidencie la presencia de las cuatro etapas del análisis discutidas en el curso: selección, limpieza, exploración y comunicación. 
+  Utilizamos la librería Rspotify para generar un set de datos similar al del TP1 con algunos datos adicionales.
+  De manera complementaria, generamos un set de datos con canciones relacionadas, denominado "related_5x0.txt", y un set de datos con las canciones más reproducidas, denominado "charly_data_top.txt".
+  Adjuntamos el archivo  generador del Mardown, de la Shiny App y los archivos necesarios para correr este script.
+  
+  
+```{r seteos preliminares, echo=FALSE, message=FALSE, warning=FALSE}
+rm(list = ls())
+  paquetes <-
+    c("readr", "readxl", "dplyr", "tibble", "ggplot2", "cowplot", "tidyr", 
+      "ggridges","ggrepel","ggbeeswarm", "GGally", "plotly", "treemapify", "car", 
+      "vcd", "colorspace", "tidyverse", "psych", "lubridate","stopwords","magrittr","gganimate", "gapminder","gifski",
+      "knitr","PerformanceAnalytics","corrplot","sqldf","ggrepel", "tidytext", "arules","ggwordcloud")
+# Instalar si no están 
+ 
+  instalados <- paquetes %in% rownames(installed.packages())
+  if (any(instalados == FALSE)) {
+    install.packages(paquetes[!instalados])
+  }
+  
+  # Cargarlos
+  invisible(lapply(paquetes, library, character.only = TRUE))
+  
+  cbbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+                  "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+  
+```
+
+<h2>Lectura y limpieza de los datos</h2>
+  
+```{r lectura-de-datos, results='hide', message=FALSE, warning=FALSE}
+##Lectura
+#setwd(choose.dir())
+charly_data_V2 <- read_delim("charly_data_V2.txt", 
+                               "\t", escape_double = FALSE, locale = locale(), 
+                               trim_ws = TRUE)
+  
+charly_data_top <- read_delim("charly_data_top.txt", 
+                                "\t", escape_double = FALSE, trim_ws = TRUE)
+  
+related_5x10 <- read_delim("related_5x10.txt", 
+                             "\t", escape_double = FALSE, trim_ws = TRUE)
+  
+## Limpieza
+# Agregamos 2 columnas adicionales. "year" y "decade"
+  charly_data_V2<- mutate(charly_data_V2, 
+                          year = year(release_date)) %>%
+                          mutate(year = factor(year))
+  
+  charly_data_V2 <- mutate(charly_data_V2, 
+                           decade = case_when(year(release_date)<1980 ~ 1970, 
+                                              year(release_date)<1990 ~ 1980, 
+                                              year(release_date)<2000 ~ 1990, 
+                                              year(release_date)<2010 ~ 2000, 
+                                              year(release_date)<2020 ~ 2010) )
+  
+# Unificamos nombre de la Discográfica
+  charly_data_V2$label[charly_data_V2$label=="Universal Music Argentina S.A."] <- "Universal Music"
+  charly_data_V2$label[charly_data_V2$label=="Universal Music S.A."] <- "Universal Music"
+  charly_data_V2$label[charly_data_V2$label=="Inamu Discos bajo licencia a Zarpa SA y 300 Produccciones"] <- "Inamu Discos"
+  
+# Se convierten a factor las variables que figuran erroneamente como caracter
+  
+charly_data_V2 <- mutate(charly_data_V2, artist = as.factor(charly_data_V2$artist), album_name = as.factor(charly_data_V2$album_name), label = as.factor(charly_data_V2$label)  )
+charly_data_top <- mutate(charly_data_top, artist = as.factor(charly_data_top$artist), album_name = as.factor(charly_data_top$album_name), label = as.factor(charly_data_top$label))
+related_5x10 <- mutate(related_5x10, artist_name = as.factor(related_5x10$artist_name), name = as.factor(related_5x10$name))    
+
+
+```
+
+Observamos con str los datos de las tres tablas y chequeamos que no haya datos faltantes
+
+```{r str, echo=FALSE} 
+
+ ## Observamos con str los datos en charly_data_V2
+  
+data.frame(variable = names(charly_data_V2),
+            tbbl_class = sapply(charly_data_V2, typeof),
+            first_values = sapply(charly_data_V2, function(x) paste0(head(x),  collapse = ", ")),
+            row.names = NULL) %>% 
+   kable()
+  
+  if(anyNA(charly_data_V2)==FALSE){paste0("No existen Datos Faltantes en charly_data_V2")}
+  
+  
+  ## Observamos con str los datos en charly_data_top
+  
+  
+  data.frame(variable = names(charly_data_top),
+            tbbl_class = sapply(charly_data_top, typeof),
+            first_values = sapply(charly_data_top, function(x) paste0(head(x),  collapse = ", ")),
+            row.names = NULL) %>% 
+   kable()
+  
+  if(anyNA(charly_data_top)==FALSE){paste0("No existen Datos Faltantes en charly_data_top")}
+  
+  ## Observamos con str los datos en related_5x10
+ 
+data.frame(variable = names(related_5x10),
+            tbbl_class = sapply(related_5x10, typeof),
+            first_values = sapply(related_5x10, function(x) paste0(head(x),  collapse = ", ")),
+            row.names = NULL) %>% 
+   kable()
+  if(anyNA(related_5x10)==FALSE){paste0("No existen Datos Faltantes en related_5x10")}
+
+```
+<h2>Comenzamos el análisis</h2>
+
+Graficamos la cantidad de canciones publicadas por Spotify en las que participó Charly García, la cantidad de canciones por album y también por sello discográfico.
+ 
+  
+```{r FrecArtista, echo=FALSE, fig.align = "center"}
+### Cantidad de canciones por nombre del artista
+  xAlbumArtist <- as.data.frame(count(charly_data_V2,artist,sort=TRUE)) 
+  
+  ggplot(xAlbumArtist)+
+    aes(y = reorder(artist, n), x = n, fill=artist) + 
+    geom_bar(stat = "identity") + 
+    ggtitle("Cantidad de canciones con la participación de Charly")+
+    geom_text(aes(label = round(n, 1)), size=3, nudge_x= 10, color="#666666")+
+    scale_fill_manual(values=cbbPalette)+
+    guides(fill=FALSE)+
+    ylab("Artista")+xlab("Cantidad de canciones")
+  
+```
+
+   Como podemos observar, Charly García como solista tiene publicadas 280 canciones en Spotify. Tener en cuenta que muchas de las canciones se repiten por ser versiones distintas de una misma canción.En tanto los grupos La Máquina de Hacer Pájaros, Porsugieco y Billy Bond generaron 15, 12 y 9 canciones respectivamente, con lo que las podemo considerar bandas de un sólo disco.
+  
+  
+```{r FrecAlbum, fig.align= "center", out.height= "100%", fig.height = 10, echo=FALSE}
+     ### Cantidad de canciones por Álbum
+  
+  xAlbumName <- as.data.frame(count(charly_data_V2,album_name,sort=TRUE))
+  
+    ggplot(xAlbumName)+
+    aes(y = reorder(album_name, n), x = n, fill=album_name) + 
+    geom_bar(stat = "identity") + 
+     ggtitle("Cantidad de canciones en cada Album", )+
+    geom_text(aes(label = round(n, 1)), size=3, nudge_x= 1, color="#666666")+
+    guides(fill=FALSE)+
+    ylab("Album")+xlab("Cantidad de canciones")
+
+```
+ 
+ 
+  
+```{r FrecAlbum2, echo=FALSE}
+
+mean(xAlbumName$n)
+count(xAlbumName)
+
+#La cantidad media de canciones por disco fue de 12,84
+
+``` 
+  
+   El set de datos que estamos analizando incluye información de 45 discos con un promedio de 12,84 canciones por disco.
+  
+  
+```{r FrecDiscografica, echo=FALSE}
+## Cantidad de canciones por Discográfica
+xAlbumLabel <- as.data.frame(count(charly_data_V2,label, sort=TRUE))
+  
+  ggplot(xAlbumLabel)+
+    aes(y = reorder(label, n), x = n, fill=label) + 
+    geom_bar(stat = "identity") + 
+    ggtitle("Cantidad de canciones con la participación de Charly")+
+    geom_text(aes(label = round(n, 1)), size=3, nudge_x= 10, color="#666666")+
+    scale_fill_manual(values=cbbPalette)+
+    guides(fill=FALSE)+
+    ylab("Discográfica")+xlab("Cantidad de canciones")
+  
+```
+
+ Se observa que las Discográficas: Columbia y Universal, han producido aproximadamente el 70% de las canciones de Charly disponibles en Spotify.
+  
+ 
+<h2>Correlaciones de las variables conocidas como "song features"</h2>
+
+  Se observa que podría existir correlación lineal positiva entre: "energía" y "volúmen", "bailabilidad" y "nivel de positividad", "energía" y "nivel de positividad" y correlación lineal negativa entre: "energía" y "acusticidad". 
+
+  La popularidad, variable agregada al dataset original, no estaría correlacionada linealmente con los otros indicadores.
+
+  
+```{r CorrFeatures, fig.align = "center", echo=FALSE}
+  
+corrplot.mixed(cor(select(charly_data_V2,song_popularity, danceability,energy,loudness,                speechiness,acousticness,instrumentalness,valence)), 
+                     order="AOE", tl.col="black", number.cex= 1.75)
+  
+chart.Correlation(select(charly_data_V2, song_popularity, danceability,energy,loudness,                speechiness,acousticness,instrumentalness,valence), histogram=TRUE, pch=19)
+  
+
+```
+<h2>Ajuste LOESS para las "song features" correlacionadas</h2>
+ 
+Se realizó análisis LOESS para las 4 relaciones identificadas anteriormente, con parámetros: Alfa=0.3 y grado 1. 
+Las relaciones entre "energia" y "volumen" parecieran ajustar adecuadamente con un modelo lineal local, lo cuál es coherente con los resultados obtenidos al estudiar correlación lineal. Sin embargo, las otras tres relaciones ("bailabilidad" y "nivel de positividad", "energía" y "nivel de positividad" y, "energía" y "acusticidad"), que obtuvieron iguales resultados de test de hipótesis de correlación lineal, no parecieran ajustar adecuadamente con este modelo  
+
+    
+```{r LOESSFeatures, out.weight= "100%", fig.align = "center", echo=FALSE}
+  
+  ## Ajuste LOESS: energy y loudness
+  
+  loes1 <- ggplot(charly_data_V2) + 
+    aes(x = energy, y = loudness) +
+    geom_point() + 
+    stat_smooth(method = "loess", se = FALSE, 
+                span = .3, method.args = list(degree = 1))# +
+    #ggtitle("Ajuste LOESS")
+  
+  #Ajuste LOESS: valence y danceability
+  
+  loes2 <- ggplot(charly_data_V2) + 
+    aes(x = valence, y = danceability) +
+    geom_point() + 
+    stat_smooth(method = "loess", se = FALSE, 
+                span = .3, method.args = list(degree = 1))# +
+    #ggtitle("Ajuste LOESS")
+  
+  #Ajuste LOESS energy y acousticness
+  
+  loes3 <- ggplot(charly_data_V2) + 
+    aes(x = energy, y = acousticness) +
+    geom_point() + 
+    stat_smooth(method = "loess", se = FALSE, 
+                span = .3, method.args = list(degree = 1)) #+
+    #ggtitle("Ajuste LOESS")
+  
+  #Ajuste LOESS  energy y valence
+  
+  loes4 <- ggplot(charly_data_V2) + 
+    aes(x = energy, y = valence) +
+    geom_point() + 
+    stat_smooth(method = "loess", se = FALSE, 
+                span = .3, method.args = list(degree = 1)) #+
+    #ggtitle("Ajuste LOESS")
+  
+  #Se grafican las cuatro curvas generadas
+  
+  plot_grid(loes1, loes2, loes3, loes4)
+  
+
+```
+ 
+   Se decide profundizar el análisis LOESS del primer caso ("energía" y "volumen") para mejorar la modelización. Para ello se comparó el valor del parámetro Alfa=0.3 con otros dos valores, conservando el grado 1. No se consideró modelizar con grado 2 porque no se evidencian gráficamente, máximos y mínimos locales y porque el coeficiente de correlación lineal se consideró estadísticamente significativo para este tipo de relación.
+
+   Se observa que con parámetro Alfa=0.1 existe sobreajuste, con Alfa 0.3 mejora la situación pero continúa existiendo un sobreajuste en los valores extremos del intervalo de estudio. Alfa 0.6 pareciera ser el parámetro más apropiado en este caso para modelizar la relación entre estas variables.
+   
+  
+```{r LOESS1ercaso, out.weight= "100%",  fig.align = "center", echo=FALSE}
+  
+  # Ajusto 3 loess variando Alfa (span) y que me quedo con los valores ajustados
+  
+  d2 <- sapply(c(.1, .3, .6), function(alfa) loess(loudness ~ energy, charly_data_V2, span = alfa)$fitted)
+  colnames(d2) <- paste("alfa =", c("0.1", "0.3", "0.6"))
+  d2 <- cbind(charly_data_V2, d2)
+  # Paso el dataset a formato largo
+  d2 <- pivot_longer(d2, starts_with("alfa"), names_to = "alfa", values_to = "fitted")
+  
+  # Grafico en distintos paneles
+  ggplot(d2) + 
+    aes(x = energy) +
+    geom_point(aes(y = loudness)) +
+    geom_line(aes(y = fitted), color = "blue", lwd = 1.25) +
+    facet_wrap(~ alfa, nrow = 3) +
+    theme(panel.spacing = unit(0, "lines"))
+  
+
+```
+ 
+  
+<h2>Song Features por banda.</h2>
+
+En las 8 variables analizadas, Sui Generis y Seru Giran tienen distribuciones similares por lo que sería esperable que si a una persona que le gustara una banda, también le gustaría la otra.
+ 
+```{r FeaturesporBanda, out.weight= "100%", fig.height = 12, fig.width=12, fig.align = "center", echo=FALSE}
+  
+  g1<- ggplot(charly_data_V2) +
+    aes(x = song_popularity, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Popularidad", y = "Banda") 
+  g2<- ggplot(charly_data_V2) +
+    aes(x = danceability, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Bailabilidad", y = "Banda") 
+  g3<- ggplot(charly_data_V2) +
+    aes(x = energy, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Energía", y = "Banda")
+  g4<- ggplot(charly_data_V2) +
+    aes(x = loudness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Volúmen", y = "Banda")
+  g5<- ggplot(charly_data_V2) +
+    aes(x = speechiness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Habla", y = "Banda")
+  g6<- ggplot(charly_data_V2) +
+    aes(x = acousticness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Acusticidad", y = "Banda")
+  g7<- ggplot(charly_data_V2) +
+    aes(x = instrumentalness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Instrumentalidad", y = "Banda")
+  g8<- ggplot(charly_data_V2) +
+    aes(x = valence, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Nivel de Alegria", y = "Banda")
+  
+  plot_grid(g1, g2, g3, g4, g5, g6, g7, g8, nrow = 3)
+```
+  
+  Se repite analisis, quitando bandas de un solo disco (Porsuigieco, Bily Bond, La Maquina de Hacer Pajaros) para mejor apreciación gráfica de las simulitudes entre las distribuciones de las variables analizadas para las canciones de las Bandas Sui Generis y Serú Giran.
+  
+```{r FeaturesporBandab, out.weight= "100%", fig.align = "center", echo=FALSE}
+  
+  charly_data_v3 <- filter(charly_data_V2, !artist %in% c("Porsuigieco", "Billy Bond", "La Maquina De Hacer Pájaros"))
+
+  gg1<- ggplot(charly_data_v3) +
+    aes(x = song_popularity, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Popularidad", y = "Banda") 
+  gg2<- ggplot(charly_data_v3) +
+    aes(x = danceability, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Bailabilidad", y = "Banda") 
+  gg3<- ggplot(charly_data_v3) +
+    aes(x = energy, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Energía", y = "Banda")
+  gg4<- ggplot(charly_data_v3) +
+    aes(x = loudness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Volúmen", y = "Banda")
+  gg5<- ggplot(charly_data_v3) +
+    aes(x = speechiness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Habla", y = "Banda")
+  gg6<- ggplot(charly_data_v3) +
+    aes(x = acousticness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Acusticidad", y = "Banda")
+  gg7<- ggplot(charly_data_v3) +
+    aes(x = instrumentalness, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Instrumentalidad", y = "Banda")
+  gg8<- ggplot(charly_data_v3) +
+    aes(x = valence, y = artist, fill = artist) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Nivel de Alegria", y = "Banda")
+  
+  plot_grid(gg1, gg2, gg3, gg4, gg5, gg6, gg7, gg8, nrow = 3)
+
+```
+  
+<h2>Analisis por compañia discográfica</h2>
+
+El dato de la compañía discográfica, es uno de los datos externos aportados al dataset original.
+Los discos de EMI Argentina tendrían mayor nivel de energía que el resto. Pareciera que Inamu tiene más acusticidad que el resto. 
+
+
+```{r FeaturesporDiscografica, out.weight= "100%", fig.align = "center", echo=FALSE}
+  
+  g1<- ggplot(charly_data_V2) +
+    aes(x = song_popularity, y = label , fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Popularidad", y= "Discográfica") 
+  g2<- ggplot(charly_data_V2) +
+    aes(x = danceability,  y=label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Bailabilidad", y = "Discográfica") 
+  g3<- ggplot(charly_data_V2) +
+    aes(x = energy, y = label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Energía", y = "Discográfica")
+  g4<- ggplot(charly_data_V2) +
+    aes(x = loudness, y = label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Volúmen", y = "Discográfica")
+  g5<- ggplot(charly_data_V2) +
+    aes(x = speechiness, y = label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Cantidad de texto hablado", y = "Discográfica")
+  g6<- ggplot(charly_data_V2) +
+    aes(x = acousticness, y = label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Acusticidad", y = "Discográfica")
+  g7<- ggplot(charly_data_V2) +
+    aes(x = instrumentalness, y = label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Instrumentalidad", y = "Discográfica")
+  g8<- ggplot(charly_data_V2) +
+    aes(x = valence, y = label, fill = label) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Nivel de Alegria", y = "Discográfica")
+  
+  plot_grid(g1, g2, g3, g4, g5, g6, g7, g8, nrow = 3)
+
+
+```
+
+
+<h2>Serie de tiempo</h2>
+
+El release date es otro de los datos que sumamos al dataset original.
+Se analiza en una serie de tiempo, las épocas de mayores lanzamientos de Charly, graficando series de tiempo de temas/año, y luego temas/ década.
+
+```{r Serietiempolanzamiento, out.weight= "100%", fig.width=10, fig.align = "center", echo=FALSE}
+  
+   xYear <- as.data.frame(table(charly_data_V2$year)) 
+  xYear$Var1 <- as.Date(xYear$Var1, "%Y")
+    
+  st1 <- ggplot(xYear) + aes(x = Var1, y = Freq) +
+  geom_line(color = "#00AFBB") +geom_point()+
+  scale_x_date(date_labels = "%Y") +
+    ggtitle("Cantidad de canciones con la participación de Charly por año")+
+    guides(fill=FALSE)+
+    ylab("Canciones")+xlab("Año")
+  
+  st1
+  
+
+  st2 <- 
+    ggplot(charly_data_V2 %>% count(decade) %>% # Group by decade and label, then count number in each group
+             mutate(pct=n/sum(n),               # Calculate percent within each region
+                    ypos = cumsum(n) - 0.5*n),  # Calculate label positions
+           aes(decade, n, fill=decade)) +
+    geom_bar(stat="identity") +
+    guides(fill=FALSE)+
+    ylab("Canciones")+xlab("Década")+
+    geom_text(aes(label=paste0(sprintf("%1.1f", pct*100),"%")),
+              position=position_stack(vjust=0.5), 
+              color="#FFFFFF")
+  st2
+  
+  st3 <- 
+  ggplot(charly_data_V2 %>% count(decade, label) %>% # Group by decade and label, then count number in each group
+              mutate(pct=n/sum(n),               # Calculate percent within each region
+                     ypos = cumsum(n) - 0.5*n),  # Calculate label positions
+            aes(decade, n, fill=label)) +
+       geom_bar(stat="identity") +
+       geom_text(aes(label=paste0(sprintf("%1.1f", pct*100),"%")),
+                 position=position_stack(vjust=0.5), 
+                 color="#FFFFFF")+ labs(fill = "Discográfica")+xlab("Década")
+  st3
+  
+```
+
+Se observa que en 2000 y 2009 hay gran cantidad de lanzamientos.
+En el 2000, los tres discos son reediciones de Sui Generis.
+En el 2009 se editaron dos discos especiales de Seru Giran y dos especiales de Charly. Estos dos años, son los que marcan que casi el 40% de las canciones presentes en Spotify se lanzaron en la década del 2000
+Luego, profundizando el análisis por década de acuerdo al sello discográfico que editó las canciones se observa que Columbia es la única con lanzamientos en las cinco décadas analizadas.
+
+
+<h2>Evolución de variables por década</h2>
+
+  Analizando el comportamiento de los "song features" a lo largo del tiempo se observa que con el paso de las décadas las canciones tenderían a ser:
+<p> *- más "bailables".*</p>
+<p> *- con mayor nivel de "energía".*</p>
+<p> *- con menor nivel de "acusticidad"*</p>
+<p> *- más equilibradas en "nivel de alegría", en los 70s se observa una moda de canciones con menor "nivel de alegría". Luego se va atenuenando la curva, lo que implica que hay mayor equilibrio entre canciones con distinto "nivel de alegría".* </p>
+<p> *- con indice de popularidad tendiente a 20 a partir de la década del 80.*</p>
+<p> *- con una marcada tendencia a disminuir el nivel de "instrumentalidad".*</p>
+  
+Podría inferirse que el estilo de composición musical del artista no se ha mantenido estable a lo largo de los años de acuerdo a estos indicadores, y podrían existir otras variables en la composición musical o en la temática de las letras que hubieran sufrido cambios.
+ 
+  
+ ```{r SongFeatureporDecada, out.weight= "100%", fig.width=10, , fig.height = 4, fig.align = "center", echo=FALSE}
+
+
+    ggplot(charly_data_V2) +
+    aes(x = danceability) +
+    geom_density()+
+    facet_wrap(~ decade)+
+    theme(legend.position = "none")+
+    labs(title = "Bailabiliad")
+  
+    ggplot(charly_data_V2) +
+    aes(x = energy) +
+    geom_density() +
+    facet_wrap(~ decade)+
+    theme(legend.position = "none") +
+    labs(title = "Energía")
+    
+  
+    ggplot(charly_data_V2) +
+    aes(x = speechiness) +
+    geom_density() +
+    facet_wrap(~ decade)+
+    theme(legend.position = "none") +
+    labs(title = "Habla")
+  
+    ggplot(charly_data_V2) +
+    aes(x = acousticness) +
+    geom_density() +
+    facet_wrap(~ decade)+
+    theme(legend.position = "none") +
+    labs(title = "Acusticidad")
+  
+    ggplot(charly_data_V2) +
+    aes(x = instrumentalness) +
+    geom_density() +
+    facet_wrap(~ decade)+
+    theme(legend.position = "none") +
+    labs(title = "Instrumentalidad")
+  
+    ggplot(charly_data_V2) +
+    aes(x = valence) +
+    geom_density() +
+    facet_wrap(~ decade)+
+    theme(legend.position = "none") +
+    labs(title = "Nivel de alegría")
+  
+ 
+    ggplot(charly_data_V2) +
+    aes(x = song_popularity) +
+    geom_density() +
+    facet_wrap(~ decade)+
+    theme(legend.position = "bottom") +
+    theme(legend.title = element_blank())+
+    labs(ggtitle = "Popularidad")
+
+```
+  
+  
+<h2>Comparamos con Artistas relacionados.</h2>
+
+  En la etapa de generación de datos, habíamos buscado los artistas relacionados con Charly según Spotify. Tomamos los 5 mas populares y de cada uno de estos sus 10 canciones mas populares.
+  En esta instancia de análisis comparamos primeramente el sub-set de canciones más populares de Charly con su propia Discografía y luego, las canciones más populares de Charly con las canciones más populares de los artistas relacionados
+  
+  
+  
+  ```{r ComparacionArtistasRelacionados, out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center", echo=FALSE}
+  
+  ## Se compara los temas más populares (top ten de popularidad) vs 
+  ## todos los temas de Charly
+  ## temas más populares de otros artidas de Rock Nacional
+  ## Genero un dataset que incluya las 8 variables que queremos comparar +  el origen
+  
+  temas1<- select(charly_data_V2,song_popularity, danceability,energy,loudness,                speechiness,acousticness,instrumentalness,valence)
+  temas1<- mutate(temas1, clase="Charly")
+  
+  temas2<- select(charly_data_top,song_popularity, danceability,energy,loudness,                speechiness,acousticness,instrumentalness,valence)
+  temas2<- mutate(temas2, clase="Charly Top 10")
+  
+  temas3<- select(related_5x10,song_popularity, danceability,energy,loudness,                speechiness,acousticness,instrumentalness,valence)
+  temas3<- mutate(temas3, clase="Top Rock Nacional")
+  
+  temas<- rbind(temas1, temas2, temas3)
+  
+  ## Versus Charly
+  
+  gg1<- ggplot(temas) +
+    aes(x = song_popularity, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Popularidad", y = "Clase") 
+  gg2<- ggplot(temas) +
+    aes(x = danceability, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Bailabilidad", y = "Clase") 
+  gg3<- ggplot(temas) +
+    aes(x = energy, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Energía", y = "Clase")
+  gg4<- ggplot(temas) +
+    aes(x = loudness, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Volumen", y = "Clase")
+  gg5<- ggplot(temas) +
+    aes(x = speechiness, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Cantidad de texto hablado", y = "Clase")
+  gg6<- ggplot(temas) +
+    aes(x = acousticness, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Acusticidad", y = "Clase")
+  gg7<- ggplot(temas) +
+    aes(x = instrumentalness, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Instrumentalidad", y = "Clase")
+  gg8<- ggplot(temas) +
+    aes(x = valence, y = clase, fill = clase) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Nivel de Alegria", y = "clase")
+  
+  plot_grid(gg1, gg2, gg3, gg4, gg5,gg6,gg7,gg8, nrow = 3)
+
+```
+
+ De este análisis se observa que los "Song Features" estudiados para las canciones más populares de Charly, se diferencian del patrón general de canciones. El índice de popularidad es notablemente mayor que para el resto de la discografía, lo cuál era esperable, pero también se observa qué el conjunto de canciones más populares presentan mayor nivel de "Energía", "Bailabilidad" y "Alegría". A su vez, se observa similitud en todos los indicadores al comparar el conjunto de canciones más populares de Charly con las canciones más populares de artistas relacionados, lo cuál podría permitir teorizar sobre la incidencia de valores altos de "Energía", "Bailabilidad" y "Alegría" en la popularidad de las
+canciones, independientemente del Artista
+
+
+<h2>Análisis de títulos</h2>
+
+   Para complementar el análisis de "Features" de canciones, decidimos analizar otras variables de búsqueda posibles, en particular la presencia de palabras populares en los títulos de las canciones de Charly.
+
+
+```{r AnalisisTexto,  echo=FALSE, fig.align = "center"}
+conteos1 <- charly_data_V2 %>%
+    select(name) %>% 
+    unnest_tokens(input = name, output = "palabras") %>% 
+    count(palabras, sort = TRUE) 
+
+ borrar_esp <- get_stopwords(language = "es") %>% pull(word)
+  
+  conteos1 <- filter(
+    conteos1, 
+    !palabras %in% borrar_esp,n>5)
+  
+  nube_charly <- ggplot(data = conteos1) +
+    aes(label = palabras, size = log(n), col = n) +
+    geom_text_wordcloud_area()
+  nube_charly
+
+```
+  
+   Las palabras más frecuentes parecieran ser "Live" y "En vivo", lo cual indicaría la gran cantidad de canciones grabadas en ese formato de las canciones de Estudio.
+  Para identificar la palabra más utilizada, eliminamos las palabras "Live" y "En vivo"
+
+
+```{r AnalisisTexto1,  echo=FALSE, fig.align = "center"}
+ #Idioma español
+
+conteos1 <- filter(
+    conteos1, 
+    !palabras %in% c("vivo","live"),n>5)
+  nube_charly <- ggplot(data = conteos1) +
+    aes(label = palabras, size = log(n), col = n) +
+    geom_text_wordcloud_area()
+  
+nube_charly
+```
+
+ De este segundo análisis destacamos que la palabra más utilizada es **amor**
+
+
+ Habiendo identificado la presencia de una gran proporción de canciones grabadas en "Vivo" procedemos a estudiar si existen diferencias con las canciones grabadas en "Estudio". 
+
+```{r Estudio-Vivo, echo=FALSE, fig.align = "center"}
+
+palabra <- c("vivo", "Vivo", "live", "Live")
+
+## Ver de usa el "V|vivo"
+
+tipo <- factor(str_detect( string = charly_data_V2$name, pattern = paste(palabra, collapse = "|")))
+
+#tipo
+
+charly_data_V4 <- cbind(charly_data_V2, tipo)
+
+charly_data_V4 <- mutate(charly_data_V4, tipo = case_when(tipo == T ~ "Vivo",tipo == F~ "Estudio"))
+
+charly_data_V4$tipo <- factor(charly_data_V4$tipo)
+
+canc_vivo <- filter(charly_data_V4,tipo == "Vivo")
+
+
+summary(charly_data_V4$tipo)
+
+g1<- ggplot(charly_data_V4) +
+    aes(x = liveness, y = tipo, fill = tipo) +
+    geom_boxplot(show.legend = T) +
+    labs(x = "Liveness", y = "Tipo")
+g2 <- ggplot(charly_data_V4) +
+  aes(x = liveness, color = tipo, fill = tipo) +
+  geom_density(alpha = 0.4) +
+  labs(x = "Liveness", y = "Densidad",
+       color = "Tipo",
+       fill = "Tipo") 
+
+plot_grid(g1, g2, nrow = 2)
+
+dif_tipo <- charly_data_V4 %>% group_by(tipo) %>% summarise(median(liveness), mean(liveness), sd(liveness))
+    
+charly_data_V4 %>% group_by(tipo) %>% summarise(median(liveness), mean(liveness), sd(liveness)) 
+
+
+```
+ 
+ Comparando tanto gráficamente como con los estimadores de tendencia central y de varianza, vemos que de acuerdo a la separación hecha manualmente en factores Vivo/ Estudio la variable liveness tiene valores muy  diferentes, como es de esperar, crece mucho para las canciones marcadas como en Vivo. También es de destacar que las canciones de Estudio, el cuartil del 75% se encuentra en aproximadamente 0.3, y el cuartil del 25% de Vivo se encuentra en aproximadamente 0.4, con lo que el solapamiento de ambas curvas es muy bajo 
+
+
+```{r Estudio/Vivo features,echo=FALSE, fig.align = "center"}
+ g1<- ggplot(charly_data_V4) +
+  aes(x = song_popularity, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Popularidad", y = "Tipo") 
+g2<- ggplot(charly_data_V4) +
+  aes(x = danceability, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Bailabilidad", y = "Tipo") 
+g3<- ggplot(charly_data_V4) +
+  aes(x = energy, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Energía", y = "Tipo")
+g4<- ggplot(charly_data_V4) +
+  aes(x = loudness, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Volúmen", y = "Tipo")
+g5<- ggplot(charly_data_V4) +
+  aes(x = speechiness, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Habla", y = "Tipo")
+g6<- ggplot(charly_data_V4) +
+  aes(x = acousticness, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Acusticidad", y = "Tipo")
+g7<- ggplot(charly_data_V4) +
+  aes(x = instrumentalness, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Instrumentalidad", y = "Tipo")
+g8<- ggplot(charly_data_V4) +
+  aes(x = valence, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Nivel de Alegria", y = "Tipo")
+
+g9<- ggplot(charly_data_V4) +
+  aes(x = duration_ms, y = tipo, fill = tipo) +
+  geom_boxplot(show.legend = F) +
+  labs(x = "Duración en ms", y = "Tipo")
+
+
+
+plot_grid(g1, g2, g3, g4, g5, g6, g7, g8, g9,  nrow = 3)
+```
+
+  Vemos además, que comparando las canciones de Charly, en las presentaciones en Vivo son menos populares y menos bailables, tienen un nivel de acusticidad similar, y las canciones de estudio tienen un nivel superior de instrumentalidad y nivel de alegría.
+
+  
+<h2>Análisis de duración de discos y canciones</h2>
+
+   Luego del análisis de los "Song Features", y de las palabras clave, decidimos estudiar la duración de las canciones y los álbumes dónde aparecen en relación al año de lanzamiento de las mismas.
+  En un primer análisis vemos que casi todos los discos de duración mayor a los 50 minutos, fueron producidos a partir de la década del 90, con reediciones de discos anteriores y producidos por Universal Music y Columbia. Se observa un crecimiento en la duración de los discos con el paso del tiempo, pero no pareciera ser un crecimiento lineal.
+
+  
+```{r DuracionDiscosAñoDiscografica, echo=TRUE,out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center"}
+#	Dibujo de álbum por año con nombre del titulo, con color de acuerdo a discografica
+  
+album <- sqldf("select album_name, label, year, decade, sum(duration_ms)/(1000*60) as duracion, count(name) as canciones,  avg(duration_ms)/(1000*60) as duracion_promedio from charly_data_V2 group by album_name, label")
+  
+ album$year <- as.Date(album$year, "%Y")
+
+  ggplot(album, aes(x = year, y = duracion, color = label)) +
+      geom_point()
+
+  ajuste_lineal <- lm(album$duracion~album$year) %>% summary()
+  ajuste_lineal$r.squared
+
+ggplot(album, aes(x = year, y = duracion)) +
+      geom_point() + stat_smooth(method = "lm", se= FALSE)+ylab("Duración")+xlab("Año")
+
+```       
+
+El R cuadrado tiene un valor de 0.22, con lo que podemos ver que el modelo lineal no ajusta bien el crecimiento de cantidad de canciones por año.
+
+
+<h2>Análisis de Largo de Canciones</h2>
+
+  Estudiamos la duración de las canciones, y pudimos observar que la mediana de duración es de 3.75 minutos con media de duración de 4 minutos debido a la presencia de valores extremos, entre los cuáles se destaca que las tres canciones más largas corresponden a versiones en vivo donde fueron compilados varios temas, por lo que fueron eliminados del Set de Datos para continuar con el análisis. Eliminados los valores extremos, observamos que la duración de las canciones de Charly pareciera comportarse como una población normal, de media 3,92 minutos.
+
+ 
+```{r DuracionCanciones, out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center", echo=FALSE}
+## Se genera la columna duration_min, con la duración de canciones en min (ajustado decimal)
+
+charly_data_V2 <- mutate(charly_data_V2, duration_min=duration_ms/(1000*60))
+
+##Distribución de duración en minutos de las canciones
+
+g1<- ggplot(charly_data_V2) +
+    aes(x = duration_min) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Duración")
+ 
+g2<- ggplot(charly_data_V2) +
+    aes(x = duration_min, y = ..density..) +
+    geom_histogram(fill = "lightblue", col = "black",              breaks = seq(0, 12, 1)) +
+  scale_x_continuous(breaks = seq(0, 12, 1)) +
+  labs(x = "Duración de canciones en minutos", y = "Densidad")+
+  stat_density(color = "black", fill = "transparent")+
+    ggtitle("Duración Canciones en minutos")  
+   
+   
+  plot_grid(g1, g2, nrow = 2)
+  
+summary(charly_data_V2$duration_min)
+```
+
+Los tres temas más largos, parecen ser compilaciones de varios temas en vivo, se los quita para el análisis, para luego buscar evolución de canciones frente a otras variables.
+
+```{r DuracionCanciones1, out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center", echo=FALSE}
+## Los tres temas más largos, parecen ser compilaciones de varios temas en vivo, se los quita para el análisis, para luego buscar evolución de canciones frente a otras variables
+
+charly_data_V4 <-filter(charly_data_V2, duration_min<12 )
+
+g1<- ggplot(charly_data_V4) +
+    aes(x = duration_min) +
+    geom_boxplot(show.legend = F) +
+    labs(x = "Duración")+
+    ggtitle("Duración Canciones en minutos - sin Valores Extremos")
+
+
+g2 <- ggplot(charly_data_V4) +
+  aes(x = duration_min, y = ..density..) +
+  geom_histogram(fill = "lightblue", col = "black", 
+                 breaks = seq(0, 12, 1)) +
+    labs(x = "Duración de canciones en minutos", y = "Densidad")+
+  stat_density(color = "black", fill = "transparent")
+
+summary(charly_data_V4$duration_min)
+ plot_grid(g1, g2, nrow = 2)
+
+```
+
+  Según el sitio promocionmusical.es, en general las canciones están en un rango de 3:15 min (3.25 m) a 4 min (4 m). En función de esto, hacemos una estudio de cuantas canciones cortas, medias y largas hay, de acuerdo al criterio anterior.
+
+```{r CategoriasDuracionCanciones2, out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center", echo=FALSE}
+
+charly_data_V4 <- mutate(charly_data_V4, Song_Length = case_when(duration_min<3.25 ~ "Corta",                          duration_min>4 ~ "Larga",(duration_min >= 3.25 & duration_min <= 4)~ "Media"))
+
+## Hay relacion entre duración de canciones y discográfica?
+
+ggplot(charly_data_V4) + 
+  aes(x = Song_Length, fill = label ) +
+  geom_bar(position = "fill") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Largo de canciones",
+    y = "Discográfica",
+    fill = "Discográfica",
+    title = "Frecuencia de tipo de largo de canciones en función de Discográfica"
+  )
+
+### La proporción de cada una parece similar. 
+###Se procede con prueba de Chi Cuadrado de H0:independiencia de variables
+
+resultado <- chisq.test(charly_data_V4$label, charly_data_V4$Song_Length)
+resultado
+### Con un p-value de 0.6337 no se puede negar la H0 de que no tienen relación
+
+```
+
+  De la evaluación de toda la discografía vemos que, para cada categoría de duración de canciones, se conserva aproximadamente la participación de las discográficas. Esto significaría que ninguna de las discográficas presenta una tendencia a producir canciones de una categoría de duración específica. 
+Se realizó un test de hipótesis X Cuadrado, con H0 "independencia entre variables: "Largo de Canciones" vs "Discográfica"", y p-value 0.6337, no podemos rechazar la hipótesis de que ambas variables son independientes. 
+
+<h2>Evolución de albums en el tiempo</h2>
+
+   Hemos visto anteriormente qué, con el correr del tiempo, la duración de los discos ha crecido. Este fenómeno podría deberse a que hubiera un aumento en la duración de las canciones o un aumento en la cantidad de canciones.
+  Como puede verse en los siguientes gráficos, la duración media de las canciones por disco pareciera mantenerse estable a lo largo del tiempo, mientras que la cantidad de canciones pareciera crecer paulatinamente y ser la responsable del aumento en la duración de los discos.
+
+  
+```{r CausasduracionDiscos, out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center", echo=FALSE}
+##  Evolución de albums en el tiempo
+
+## Cantidad de canciones por album / año
+
+g1 <- ggplot(album, aes(x = year, y = canciones)) +
+    geom_point() + stat_smooth(method = "lm", color = "black")+labs(x = "Año", y ="Cantidad de canciones")
+
+## La cantidad de canciones crece en el tiempo 
+
+## Duración de canción promedio / disco por año 
+
+g2 <-ggplot(album, aes(x = year, y = duracion_promedio)) + geom_point() + stat_smooth(method = "lm", color = "black")+labs(x = "Año", y = "Duración promedio de las canciones")
+
+## No hay tendencia clara de variación del largo de canciones en el tiempo 
+
+ plot_grid(g1, g2, nrow = 2)
+
+ 
+ ##Relación de cantidad de canciones por album y largo del album
+
+#ggplot(album) +
+#  aes(x = decade, y = canciones, size = duracion, color = label) +
+#  geom_point()
+
+ggplot(album) +
+  aes(x = canciones, y = duracion, color = label) +
+  geom_point() + labs(x = "Cantidad de Canciones", y = "Duración del album", title="Relación entre cantidad de canciones y duración album")
+```
+
+A continuación se muestra una animación con la evolución del largo de disco por año.
+
+```{r CausasduracionDiscos1, out.weight= "100%", fig.width=10, fig.height = 10, fig.align = "center", echo=FALSE}
+# Animación Evolución de largo de disco por año
+
+ggplot(album, aes(canciones,duracion, size = duracion, colour = label)) +
+  geom_point(alpha = 0.7, show.legend = FALSE) +
+  labs(title = 'Año: {frame_time}', x = 'Canciones', y = 'Largo de album') +
+  transition_time(year) +
+  ease_aes('linear')
+
+
+```
+ 
+<h2>Algunas conclusiones finales.</h2>
+
+  1. Charly García grabó más canciones solistas que en grupo.
+  2. Las canciones por disco varían entre 5 y 20, con una media de 12.84 en los 45 discos.
+  3. La discográfica que ha sacado mas canciones es Columbia, seguida de cerca por Universal. Gran parte de estas publicaciones se corresponden con su trabajo como solista.
+  4. Respecto de las song features generadas por Spotify, se observa que existe correlación lineal positiva entre: “energía” y “volúmen”, “bailabilidad” y “nivel de positividad”, “energía” y “nivel de positividad” y correlación negativa entre: “energía” y “acusticidad”. La popularidad, variable agregada al dataset original no estaría correlacionada linealmente con los otros indicadores.
+  5. De las features estudiadas, la relación entre “energía” y “volúmen” pareciera ajustar apropiadamente con un modelo LOESS, de grado 1 y alfa=0.6.
+  6. En sus origenes, Charly Garcia, participando en bandas como Seru Giran y Sui Generis, lanzaba temas de mayor acusticidad, y desde el Inamu (Ente Estatal). Luego se lanzó como solista y empezó a trabajar con discográficas multinacionales como Columbia y Universal. Produciendo temas con mayores niveles de energía. Columbia es el único sello discográfico con lanzamientos en las cinco décadas analizadas en este trabajo.
+  6. Respecto de los artistas relacionados (siempre de acuerdo al algoritmo o recomendación de Spotify) se observan similitudes en los comportamientos de los song features entre las canciones top de Charly y las top de los artistas relacionados.Las canciones más populares de Charly se diferencian del resto de la discografía, con niveles mayores de "energía", "bailabilidad" y "alegría". De aqui podría inferirse que aquellas canciones con valores altos en estas variables tienen mayores posibilidades de ser populares.
+  7. En 2000 y 2009 se lanzaron casi el 40% de las canciones presentes en Spotify de la década del 2000. Con 3 discos reediciones de Sui Generis, 2 discos especiales de Seru Giran y 2 especiales de Charly.
+  8. En cuanto al estilo de composición musical a lo largo de las 5 décadas analizadas, podría decirse que no se ha mantenido estable, con canciones que han modificado sus "Song Features" de la siguiente manera:
+  <p> *- más "bailables".*</p>
+  <p> *- con mayor nivel de "energía".*</p>
+  <p> *- con menor nivel de "acusticidad"*</p>
+  <p> *- más equilibradas en "nivel de alegría", en los 70s se observa        una moda de canciones con menor "nivel de alegría". Luego se va         atenuenando la curva, lo que implica que hay mayor equilibrio           entre canciones con distinto "nivel de alegría".* </p>
+  <p> *- con indice de popularidad tendiente a 20 a partir de la década       del 80.*</p>
+  <p> *- con una marcada tendencia a disminuir el nivel de                    "instrumentalidad".*</p>
+  
+  9.La palabra más utilizada en los títulos de las Canciones de Charly es **"amor"**.
+  10. Respecto de las canciones grabadas en Estudio/Vivo se verifica que la variable liveness de Spotify crece conforme la canción tiene mayor
+probabilidad de haber sido grabada en Vivo. También se destaca que las canciones grabadas en vivo de Charly son menos Bailables que las versiones en estudio y menos populares. Mientras que las versiones de estudio tienen mayor instrumentalidad y nivel de alegría.
+  12. En cuanto a la duración de las canciones y discos con el paso de los años, aumentó la duración de los discos debido a la compilación de mayor cantidad de canciones. Posiblemente por la presencia de discos reeditados. En cambio no se identificaron variaciones en el largo de las canciones a lo largo del tiempo, de hecho pareciera existir un equilibrio en la cantidad de canciones "cortas", "medias" y "largas" editadas por cada discográfica, como si existiera un modelo comercial estudiado sobre cómo debe estar compuesto un disco.
